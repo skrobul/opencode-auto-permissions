@@ -1518,7 +1518,7 @@ function fromContext(context) {
         description: alternative
       }));
       const selectionPromise = context.ui.dialog.select({
-        title: "Command blocked",
+        title: `Command blocked: ${command}`,
         placeholder: "Choose how to continue",
         options: [
           {

@@ -156,7 +156,7 @@ describe("TUI plugin denial continuation", () => {
 
     await emitDenial(interactiveApp, app.handlers, app.pending)
 
-    expect(dialogTitle).toBe("Command blocked")
+    expect(dialogTitle).toBe("Command blocked: sudo rm -rf /")
     expect(dialogSize).toBe("xlarge")
     expect(optionTitles).not.toContain("Use safer approach")
     expect(app.replies).toHaveLength(1)
