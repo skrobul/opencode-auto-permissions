@@ -6,6 +6,8 @@ const dist = resolve(import.meta.dir, "../dist")
 
 describe("built package", () => {
   test("is publishable with native OpenCode server and TUI targets", () => {
+    expect(packageJson.name).toBe("@skrobul/opencode-auto-permissions")
+    expect(packageJson.version).toBe("0.2.16")
     expect(Reflect.has(packageJson, "private")).toBeFalse()
     expect(packageJson.publishConfig).toEqual({ access: "public" })
     expect(packageJson.exports).toMatchObject({

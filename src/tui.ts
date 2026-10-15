@@ -57,11 +57,79 @@ function fromContext(context: Context): RuntimeContext {
     client: context.client,
     data: context.data as unknown as RuntimeContext["data"],
     ...(context.location ? { location: context.location } : {}),
+    isActiveSession(sessionID) {
+      const route = context.ui.router?.current?.()
+      if (!route) return true
+      if (route.type !== "session") return false
+      return context.data.session.root(route.sessionID) === context.data.session.root(sessionID)
+    },
     showToast(input) {
       context.ui.toast.show(input)
     },
-    resumeAfterDenial(sessionID, reason) {
-      void resumeV2Session(context, sessionID, reason)
+    resumeAfterDenial(sessionID, reason, userDirection) {
+      void resumeV2Session(context, sessionID, reason, userDirection)
+    },
+    async chooseDenial({ request, reason, alternatives }) {
+      const command = request.resources.join(" ") || request.action
+      const saferOptions = alternatives.map((alternative, index) => ({
+        title: alternatives.length === 1 ? "Use safer approach" : `Safer option ${index + 1}`,
+        value: `alternative:${index}`,
+        description: alternative,
+      }))
+      const selectionPromise = context.ui.dialog.select({
+        title: `Command blocked: ${command}`,
+        placeholder: "Choose how to continue",
+        options: [
+          {
+            title: "Approve once anyway",
+            value: "approve",
+            description: "Override the reviewer for this request only; future requests stay reviewed.",
+          },
+          ...saferOptions,
+          {
+            title: "Ask agent for alternatives",
+            value: "another",
+            description: "Keep this call blocked; request a different approach.",
+          },
+          {
+            title: "Give custom direction",
+            value: "custom",
+            description: "Keep this call blocked; type a safe next step.",
+          },
+          {
+            title: "Stop",
+            value: "stop",
+            description: "Reject the request without resuming the agent.",
+          },
+        ],
+      })
+      context.ui.dialog.set({ size: "xlarge" })
+      const selection = await selectionPromise
+      if (selection === "approve") return { action: "approve" }
+      if (typeof selection === "string" && selection.startsWith("alternative:")) {
+        const index = Number(selection.slice("alternative:".length))
+        const alternative = alternatives[index]
+        if (alternative) {
+          return {
+            action: "continue",
+            instruction: `Follow this reviewer-proposed safer alternative: ${alternative}. Do not retry the blocked command.`,
+          }
+        }
+      }
+      if (selection === "another") {
+        return { action: "continue", instruction: "Suggest one or more safer alternatives. Do not retry the blocked command." }
+      }
+      if (selection === "custom") {
+        const instruction = await context.ui.dialog.prompt({
+          title: "Direction for the agent",
+          description: `Blocked command: ${command}\nReason: ${reason}\nThe blocked command remains denied.`,
+          placeholder: "Describe a safe alternative or next step",
+        })
+        return instruction?.trim()
+          ? { action: "continue", instruction: instruction.trim() }
+          : { action: "stop" }
+      }
+      return { action: "stop" }
     },
   }
 }
@@ -112,13 +180,18 @@ function clientCapabilities(client: unknown, sessionData: unknown): string[] {
  * idle it is admitted with resume so a fresh loop starts. Both the current
  * flat client and the older `v2` client shapes are supported.
  */
-async function resumeV2Session(context: Context, sessionID: string, reason: string): Promise<void> {
+async function resumeV2Session(
+  context: Context,
+  sessionID: string,
+  reason: string,
+  userDirection?: string,
+): Promise<void> {
   const config = parseConfig(context.options)
   const client = context.client as unknown as {
     session?: { prompt?: (input: Record<string, unknown>) => Promise<unknown> }
     v2?: { session?: { prompt?: (input: Record<string, unknown>) => Promise<unknown> } }
   }
-  const text = continuation(reason)
+  const text = continuation(reason, userDirection)
   const running = isRunning(context, sessionID)
   const flatPrompt = client?.session?.prompt
   const legacyPrompt = client?.v2?.session?.prompt
@@ -186,7 +259,10 @@ function isRunning(context: Context, sessionID: string): boolean {
   return typeof status === "function" ? status.call(context.data.session, sessionID) === "running" : false
 }
 
-function continuation(reason: string): string {
+function continuation(reason: string, userDirection?: string): string {
+  if (userDirection) {
+    return `${AUTO_PERMISSIONS_MESSAGE_PREFIX} ${reason}\nDo not retry the exact blocked call. This denial applies to that call only; it does not prohibit following the separate user-selected direction below.\nUser-selected direction: ${userDirection}\nFollow that direction unless it repeats the blocked call or conflicts with another explicit user constraint.`
+  }
   return `${AUTO_PERMISSIONS_MESSAGE_PREFIX} ${reason} Do not retry the exact blocked action. Continue the task using a safer alternative when possible; ask the user only if no useful safe path remains.`
 }
 
@@ -259,8 +335,8 @@ function fromLegacyApi(api: LegacyTuiApi, options: Readonly<Record<string, unkno
     },
     location: { directory: api.state.path.directory },
     showToast: api.ui.toast,
-    resumeAfterDenial(sessionID, reason) {
-      void resumeLegacySession(api, sessionID, reason)
+    resumeAfterDenial(sessionID, reason, userDirection) {
+      void resumeLegacySession(api, sessionID, reason, userDirection)
     },
   }
 }
@@ -271,7 +347,12 @@ function fromLegacyApi(api: LegacyTuiApi, options: Readonly<Record<string, unkno
  * instead of a flat `text` field; the stable client's `session.prompt` uses a
  * `{ path, query, body }` shape that must not be called accidentally.
  */
-async function resumeLegacySession(api: LegacyTuiApi, sessionID: string, reason: string): Promise<void> {
+async function resumeLegacySession(
+  api: LegacyTuiApi,
+  sessionID: string,
+  reason: string,
+  userDirection?: string,
+): Promise<void> {
   const client = api.client as {
     v2?: { session?: { prompt?: (input: Record<string, unknown>) => Promise<unknown> } }
     session?: { prompt?: (input: Record<string, unknown>) => Promise<unknown> }
@@ -281,7 +362,7 @@ async function resumeLegacySession(api: LegacyTuiApi, sessionID: string, reason:
     if (typeof client?.v2?.session?.prompt === "function") {
       await client.v2!.session!.prompt!({
         sessionID,
-        prompt: { text: continuation(reason) },
+        prompt: { text: continuation(reason, userDirection) },
         delivery: "queue",
         resume: true,
       })
@@ -291,7 +372,7 @@ async function resumeLegacySession(api: LegacyTuiApi, sessionID: string, reason:
       typeof client?.session?.prompt === "function" &&
       typeof client?.permission?.request?.list === "function"
     ) {
-      await client.session!.prompt!({ sessionID, text: continuation(reason), resume: true })
+      await client.session!.prompt!({ sessionID, text: continuation(reason, userDirection), resume: true })
     }
   } catch {
     // Resuming is best effort; the rejection itself already failed closed.

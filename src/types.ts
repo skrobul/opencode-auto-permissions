@@ -22,7 +22,7 @@ export interface PermissionRequest {
 export type Decision =
   | { kind: "allow"; reasonCode: string; reason: string }
   | { kind: "allow_session"; reasonCode: string; reason: string }
-  | { kind: "deny"; reasonCode: string; reason: string }
+  | { kind: "deny"; reasonCode: string; reason: string; alternatives?: string[] }
 
 export interface ReviewInput {
   request: {
@@ -70,7 +70,17 @@ export interface RuntimeContext {
     variant?: "info" | "success" | "warning" | "error"
     duration?: number
   }): void
-  resumeAfterDenial?(sessionID: string, reason: string): void
+  resumeAfterDenial?(sessionID: string, reason: string, userDirection?: string): void
+  isActiveSession?(sessionID: string): boolean
+  chooseDenial?(input: {
+    request: PermissionRequest
+    reason: string
+    alternatives: string[]
+  }): Promise<
+    | { action: "approve" }
+    | { action: "continue"; instruction: string }
+    | { action: "stop" }
+  >
 }
 
 export interface ReviewerClient {
