@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git clone https://github.com/hueyexe/opencode-auto-permissions.git
+git clone https://github.com/skrobul/opencode-auto-permissions.git
 cd opencode-auto-permissions
 bun install
 ```
@@ -58,7 +58,7 @@ PR's head branch **must** start with one of:
 4. Open a PR against `main`
 5. The `check` CI status must pass on your PR (the `branch-name` check must
    pass too)
-6. A maintainer (@hueyexe) will review and merge
+6. A maintainer (@skrobul) will review and merge
 
 All PRs require at least one approval from a code owner before merging. Direct
 pushes to `main` are not allowed.

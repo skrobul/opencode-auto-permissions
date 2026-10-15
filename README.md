@@ -1,8 +1,8 @@
 # OpenCode Auto Permissions
 
-[![release](https://img.shields.io/github/v/release/hueyexe/opencode-auto-permissions.svg)](https://github.com/hueyexe/opencode-auto-permissions/releases)
-[![npm](https://img.shields.io/npm/v/opencode-auto-permissions.svg)](https://www.npmjs.com/package/opencode-auto-permissions)
-[![tests](https://img.shields.io/badge/tests-108%20passing-brightgreen.svg)](./test)
+[![release](https://img.shields.io/github/v/release/skrobul/opencode-auto-permissions.svg)](https://github.com/skrobul/opencode-auto-permissions/releases)
+[![npm](https://img.shields.io/npm/v/@skrobul/opencode-auto-permissions.svg)](https://www.npmjs.com/package/@skrobul/opencode-auto-permissions)
+[![tests](https://img.shields.io/badge/tests-120%20passing-brightgreen.svg)](./test)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](./tsconfig.json)
 [![OpenCode](https://img.shields.io/badge/OpenCode-stable%20%2B%20V2-blue.svg)](./docs/COMPATIBILITY_SPIKE.md)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -16,14 +16,14 @@ The plugin supports stable and V2 OpenCode permission protocols automatically. I
 Install the published npm package globally with OpenCode's built-in plugin installer:
 
 ```bash
-opencode plugin add opencode-auto-permissions
+opencode plugin add @skrobul/opencode-auto-permissions
 ```
 
-Older stable builds use `opencode plugin -g opencode-auto-permissions` instead.
+Older stable builds use `opencode plugin -g @skrobul/opencode-auto-permissions` instead.
 
 That is the complete plugin installation. You do not need to clone this repository, install Bun, run `npm install`, choose a reviewer model, or edit plugin entries manually.
 
-OpenCode downloads the package, detects its separate server and TUI targets, and registers `opencode-auto-permissions` in your global plugin configuration (`~/.config/opencode/opencode.json` on current builds; older V2 betas also added a TUI entry to `~/.config/opencode/cli.json`).
+OpenCode downloads the package, detects its separate server and TUI targets, and registers `@skrobul/opencode-auto-permissions` in your global plugin configuration (`~/.config/opencode/opencode.json` on current builds; older V2 betas also added a TUI entry to `~/.config/opencode/cli.json`).
 
 Quit and restart OpenCode after installation because configuration is loaded at startup. Auto Permissions automatically uses the model and variant selected by the session that requested the action. It also detects whether the server or TUI integration owns permission review, so only one reviewer handles each request.
 
@@ -60,16 +60,16 @@ To confirm installation, restart OpenCode and inspect both global files for the 
 Update the package plugin to the latest published version:
 
 ```bash
-opencode plugin update opencode-auto-permissions
+opencode plugin update @skrobul/opencode-auto-permissions
 ```
 
-If your configuration entry pins a version (for example `opencode-auto-permissions@0.2.10`), remove the pin or repoint it first; the updater treats a satisfied version pin as current. Older stable builds use `opencode plugin -g --force opencode-auto-permissions@latest` instead.
+If your configuration entry pins a version (for example `@skrobul/opencode-auto-permissions@0.2.16`), remove the pin or repoint it first; the updater treats a satisfied version pin as current. Older stable builds use `opencode plugin -g --force @skrobul/opencode-auto-permissions@latest` instead.
 
 Restart OpenCode after updating. If you use an advanced options tuple, confirm that the server and TUI entries still contain the same options after the update.
 
 ## Uninstall
 
-Remove `opencode-auto-permissions` with `opencode plugin remove opencode-auto-permissions`, or remove its entry from the plugin array in `~/.config/opencode/opencode.json` (and from `~/.config/opencode/cli.json` on older V2 betas), then restart OpenCode.
+Remove `@skrobul/opencode-auto-permissions` with `opencode plugin remove @skrobul/opencode-auto-permissions`, or remove its entry from the plugin array in `~/.config/opencode/opencode.json` (and from `~/.config/opencode/cli.json` on older V2 betas), then restart OpenCode.
 
 Remove only this package's entries; leave other plugins and configuration unchanged.
 
@@ -141,7 +141,7 @@ No configuration tuple is required. To override the automatic session-model sele
 
 ```json
 [
-  "opencode-auto-permissions",
+  "@skrobul/opencode-auto-permissions",
   {
     "model": "cloudflare-workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731",
     "variant": "none",
