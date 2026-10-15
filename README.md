@@ -83,6 +83,7 @@ For each supported permission request, Auto Permissions combines deterministic s
 - External-directory boundaries are not treated as sensitive by default: ordinary project, tool, cache, log, state, temporary, and worktree paths are approved unless the target or operation presents a concrete hazard.
 - Broad boundary globs such as `/tmp/*` are not treated as the requested scope when the tool input identifies a precise target; the reviewer evaluates the actual operation and latest user request.
 - The reviewer is tuned for unattended agents: it defaults to approval when an action reasonably serves the task and uses `ask` only as a last resort.
+- A denial keeps its explanation separate from up to three concrete safer alternatives. The supervised dialog offers those alternatives only when the reviewer actually supplied them; it never turns the denial reason itself into a proposed action. Choosing one sends that direction to the agent while the blocked command remains denied.
 - If a dedicated reviewer model times out, errors, or returns an invalid decision, the plugin tries the requesting session's model once, preserving that session model's variant. It does not retry the same provider/model, and a valid denial never triggers fallback. If no fallback is available or both attempts fail, the request is rejected automatically and the main agent receives guidance to continue with a narrower or lower-risk step.
 - Reviewer sessions are hidden, have no tools, and deny all permissions.
 - Only a small, recent window of relevant user context is sent for review.
@@ -127,6 +128,7 @@ The plugin tuple accepts these options:
 | `model` | Requesting session model | Optional dedicated reviewer model in `provider/model` form. |
 | `variant` | Selected model's default | Optional reviewer-only model variant. Use `"low"` when supported for faster decisions. |
 | `sessionApprovals` | `true` | Reuse guarded, pattern-specific approvals immediately for the current session. Set `false` for one-time approvals only. |
+| `interactiveDenials` | `false` | Ask for a user decision after a reviewer denial. Approve once anyway, choose the suggested safer approach, ask the agent for another option, provide custom direction, or stop without resuming. Manual approval is one-time only. Available in the V2 TUI integration. |
 | `timeoutMs` | `30000` | Per-model timeout from 100 to 30,000 milliseconds. A fallback gets its own budget, so two model attempts can take up to 60 seconds at the default (plus context/reply overhead). |
 | `userMessageCount` | `8` | Recent user messages included in review context, from 1 to 20. |
 | `shadow` | `false` | Evaluate and record decisions without replying to permission requests. |
@@ -140,7 +142,11 @@ No configuration tuple is required. To override the automatic session-model sele
 ```json
 [
   "opencode-auto-permissions",
-  { "model": "cloudflare-workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731", "variant": "none" }
+  {
+    "model": "cloudflare-workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731",
+    "variant": "none",
+    "interactiveDenials": true
+  }
 ]
 ```
 

@@ -7,7 +7,8 @@ function harness(options: Record<string, unknown> = { model: "cloudflare-workers
   const requests: PermissionRequest[] = []
   const replies: Parameters<ReviewerClient["reply"]>[0][] = []
   const toasts: string[] = []
-  const resumptions: Array<{ sessionID: string; reason: string }> = []
+  const toastMessages: string[] = []
+  const resumptions: Array<{ sessionID: string; reason: string; userDirection?: string }> = []
 
   const context: RuntimeContext = {
     options,
@@ -82,8 +83,15 @@ function harness(options: Record<string, unknown> = { model: "cloudflare-workers
       },
       location: { default: () => ({ directory: "/repo" }) },
     },
-    showToast: (input) => toasts.push(input.title ?? input.message),
-    resumeAfterDenial: (sessionID, reason) => resumptions.push({ sessionID, reason }),
+    showToast: (input) => {
+      toasts.push(input.title ?? input.message)
+      toastMessages.push(input.message)
+    },
+    resumeAfterDenial: (sessionID, reason, userDirection) => resumptions.push({
+      sessionID,
+      reason,
+      ...(userDirection ? { userDirection } : {}),
+    }),
   }
 
   const client: ReviewerClient = {
@@ -104,7 +112,7 @@ function harness(options: Record<string, unknown> = { model: "cloudflare-workers
     for (const handler of handlers.get(type) ?? []) handler({ type, data })
   }
 
-  return { context, client, requests, replies, toasts, resumptions, emit }
+  return { context, client, requests, replies, toasts, toastMessages, resumptions, emit }
 }
 
 function request(command: string, protocol: PermissionRequest["protocol"] = "v2", id = "per_1"): PermissionRequest {
@@ -550,6 +558,100 @@ describe("installReviewer", () => {
 
     expect(decisions).toEqual(["allow"])
     expect(app.replies).toEqual([])
+    dispose()
+  })
+
+  test("waits for user direction on denial and resumes only with that direction", async () => {
+    const app = harness({ interactiveDenials: true })
+    app.requests.push(request("rm -rf generated"))
+    app.context.chooseDenial = async () => ({ action: "continue", instruction: "Delete only generated/cache." })
+    const dispose = installReviewer(app.context, { client: app.client })
+
+    app.emit("permission.v2.asked", app.requests[0])
+    await settle()
+
+    expect(app.replies[0]?.reply).toBe("reject")
+    expect(app.resumptions[0]?.reason).toBe("Authorization is missing; continue with a safer alternative.")
+    expect(app.resumptions[0]?.userDirection).toBe("Delete only generated/cache.")
+    dispose()
+  })
+
+  test("does not resume the agent when the user stops after a denial", async () => {
+    const app = harness({ interactiveDenials: true })
+    app.requests.push(request("rm -rf generated"))
+    app.context.chooseDenial = async () => ({ action: "stop" })
+    const dispose = installReviewer(app.context, { client: app.client })
+
+    app.emit("permission.v2.asked", app.requests[0])
+    await settle()
+
+    expect(app.replies[0]?.reply).toBe("reject")
+    expect(app.resumptions).toEqual([])
+    dispose()
+  })
+
+  test("passes classifier-proposed alternatives to the user chooser and agent", async () => {
+    const app = harness({
+      model: "cloudflare-workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731",
+      interactiveDenials: true,
+    })
+    const alternative = "Limit cleanup to the generated/cache directory."
+    app.client.generate = async () => ({
+      decision: "deny",
+      reasonCode: "scope_too_broad",
+      reason: "The requested path includes unrelated user files.",
+      alternatives: [alternative],
+    })
+    app.requests.push(request("rm -rf generated"))
+    let chooserAlternatives: string[] = []
+    app.context.chooseDenial = async ({ alternatives }) => {
+      chooserAlternatives = alternatives
+      return { action: "continue", instruction: alternatives[0]! }
+    }
+    const dispose = installReviewer(app.context, { client: app.client })
+
+    app.emit("permission.v2.asked", app.requests[0])
+    await settle()
+
+    expect(chooserAlternatives).toEqual([alternative])
+    expect(app.resumptions[0]?.reason).toBe("The requested path includes unrelated user files.")
+    expect(app.resumptions[0]?.userDirection).toContain(alternative)
+    dispose()
+  })
+
+  test("allows a manual one-time override without resuming the agent", async () => {
+    const app = harness({ interactiveDenials: true })
+    app.requests.push(request("git push origin main"))
+    app.context.chooseDenial = async () => ({ action: "approve" })
+    const dispose = installReviewer(app.context, { client: app.client })
+
+    app.emit("permission.v2.asked", app.requests[0])
+    await settle()
+
+    expect(app.replies).toEqual([
+      { sessionID: "ses_root", requestID: "per_1", reply: "once", protocol: "v2" },
+    ])
+    expect(app.toastMessages[0]).toBe("Manual override: this request was approved once.")
+    expect(app.resumptions).toEqual([])
+    dispose()
+  })
+
+  test("ignores permission requests that belong to another active TUI session", async () => {
+    const app = harness({ interactiveDenials: true })
+    app.requests.push(request("sudo rm -rf /"))
+    app.context.isActiveSession = () => false
+    let chooserCalls = 0
+    app.context.chooseDenial = async () => {
+      chooserCalls++
+      return { action: "approve" }
+    }
+    const dispose = installReviewer(app.context, { client: app.client, protocols: ["v2"] })
+
+    app.emit("permission.v2.asked", app.requests[0])
+    await settle()
+
+    expect(app.replies).toEqual([])
+    expect(chooserCalls).toBe(0)
     dispose()
   })
 

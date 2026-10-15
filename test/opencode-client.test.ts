@@ -246,7 +246,8 @@ describe("OpenCodeClientAdapter", () => {
     })
     expect(prompts).toHaveLength(2)
     expect(prompts[1]).toMatchObject({ format: { type: "text" } })
-    expect(prompts[1].parts[0].text).toContain('exactly these three keys')
+    expect(prompts[1].parts[0].text).toContain('exactly these four keys')
+    expect(prompts[1].parts[0].text).toContain('"alternatives"')
     expect(prompts[1].parts[0].text).toContain('"decision": one of "allow", "allow_session", or "deny"')
   })
 

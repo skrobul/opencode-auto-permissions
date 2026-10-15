@@ -52,7 +52,12 @@ export function installReviewer(context: RuntimeContext, overrides: ReviewerOver
 
   const offAsked = context.data.on("permission.v2.asked", (event) => {
     const asked = normalizeAskedEvent(event)
-    if (!asked || !protocols.has(asked.protocol) || inFlight.has(asked.id))
+    if (
+      !asked ||
+      !protocols.has(asked.protocol) ||
+      (context.isActiveSession && !context.isActiveSession(asked.sessionID)) ||
+      inFlight.has(asked.id)
+    )
       return
 
     const controller = new AbortController()
@@ -73,7 +78,12 @@ export function installReviewer(context: RuntimeContext, overrides: ReviewerOver
     const asked = normalized && configuredProtocols.length === 1
       ? { ...normalized, protocol: configuredProtocols[0]! }
       : normalized
-    if (!asked || !protocols.has(asked.protocol) || inFlight.has(asked.id))
+    if (
+      !asked ||
+      !protocols.has(asked.protocol) ||
+      (context.isActiveSession && !context.isActiveSession(asked.sessionID)) ||
+      inFlight.has(asked.id)
+    )
       return
     const controller = new AbortController()
     const startedAt = performance.now()
@@ -173,16 +183,49 @@ async function reviewAndReply(
     return
   }
 
+  const choice = config.interactiveDenials
+    ? await context.chooseDenial?.({
+        request,
+        reason: decision.reason,
+        alternatives: decision.kind === "deny" ? (decision.alternatives ?? []) : [],
+      })
+    : undefined
+  if (parentSignal.aborted || !(await isRequestPending(context, request))) return
+  const manuallyApproved = choice?.action === "approve"
   const result = await client.reply({
     sessionID: request.sessionID,
     requestID: request.id,
-    reply: "reject",
-    message: `Auto Permissions blocked this action: ${decision.reason}`,
+    reply: manuallyApproved ? "once" : "reject",
+    ...(!manuallyApproved ? { message: `Auto Permissions blocked this action: ${decision.reason}` } : {}),
     protocol: request.protocol,
   })
-  context.showToast?.({ title: "Blocked", message: decision.reason, variant: "warning", duration: 4_000 })
-  writeDecision(config, request, startedAt, decision, decisionSource(policyDecision, cachedDecision), result)
-  if (result === "replied") context.resumeAfterDenial?.(request.sessionID, decision.reason)
+  context.showToast?.({
+    title: manuallyApproved ? "Approved once" : "Blocked",
+    message: manuallyApproved
+      ? "Manual override: this request was approved once."
+      : decision.reason,
+    variant: manuallyApproved ? "success" : "warning",
+    duration: 4_000,
+  })
+  writeDecision(
+    config,
+    request,
+    startedAt,
+    decision,
+    decisionSource(policyDecision, cachedDecision),
+    result,
+    manuallyApproved ? "once" : undefined,
+  )
+  if (result === "replied") {
+    if (manuallyApproved) return
+    if (!config.interactiveDenials) {
+      context.resumeAfterDenial?.(request.sessionID, decision.reason)
+      return
+    }
+    if (choice?.action === "continue") {
+      context.resumeAfterDenial?.(request.sessionID, decision.reason, choice.instruction)
+    }
+  }
 }
 
 async function rejectAfterFailure(

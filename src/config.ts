@@ -12,6 +12,7 @@ export interface Config {
   userMessageCount: number
   shadow: boolean
   sessionApprovals: boolean
+  interactiveDenials: boolean
   runtime: "auto" | "stable" | "v2"
   diagnosticsPath: string | undefined
 }
@@ -35,6 +36,7 @@ export function parseConfig(options: Readonly<Record<string, unknown>>): Config 
     ),
     shadow: options.shadow === true,
     sessionApprovals: options.sessionApprovals !== false,
+    interactiveDenials: options.interactiveDenials === true,
     runtime: parseRuntime(options.runtime),
     diagnosticsPath: parseDiagnosticsPath(options.debug),
   }

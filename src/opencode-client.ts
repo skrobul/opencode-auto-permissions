@@ -110,7 +110,7 @@ export class OpenCodeClientAdapter implements ReviewerClient {
           format: { type: "text" },
           parts: [{
             type: "text",
-            text: `${input.prompt}\n\nStructured output was unavailable. Return only one JSON object without Markdown fences. It must have exactly these three keys:\n- "decision": one of "allow", "allow_session", or "deny"\n- "reasonCode": lower_snake_case, starting with a letter, at most 64 characters\n- "reason": one non-empty sentence, at most 240 characters\n\nExample: {"decision":"allow","reasonCode":"authorized_action","reason":"The action reasonably supports the user's request."}`,
+            text: `${input.prompt}\n\nStructured output was unavailable. Return only one JSON object without Markdown fences. It must have exactly these four keys:\n- "decision": one of "allow", "allow_session", or "deny"\n- "reasonCode": lower_snake_case, starting with a letter, at most 64 characters\n- "reason": one non-empty sentence, at most 240 characters\n- "alternatives": an array of at most three concrete safer alternatives (strings of at most 180 characters); use [] unless denying and a safe alternative exists\n\nExample: {"decision":"allow","reasonCode":"authorized_action","reason":"The action reasonably supports the user's request.","alternatives":[]}`,
           }],
         }
         const fallbackInput = stable
@@ -196,7 +196,7 @@ export class OpenCodeClientAdapter implements ReviewerClient {
       }, { signal: input.signal })
       if (!isRecord(session) || typeof session.id !== "string") throw new Error("OpenCode failed to create a reviewer session")
       sessionID = session.id
-      const strictPrompt = `${input.prompt}\n\nReturn only one JSON object without Markdown fences with exactly these keys: "decision" ("allow", "allow_session", or "deny"), "reasonCode" (lower_snake_case), and "reason" (one sentence).`
+      const strictPrompt = `${input.prompt}\n\nReturn only one JSON object without Markdown fences with exactly these keys: "decision" ("allow", "allow_session", or "deny"), "reasonCode" (lower_snake_case), "reason" (one sentence), and "alternatives" (up to three specific safer options for DENY, otherwise []).`
       const result = await this.client.session.generate({ sessionID, prompt: strictPrompt }, { signal: input.signal })
       if (!isRecord(result) || typeof result.text !== "string") throw new Error("OpenCode reviewer returned no text output")
       return JSON.parse(result.text)

@@ -125,6 +125,171 @@ describe("TUI plugin denial continuation", () => {
     expect(continuation).toContain("Do not retry the exact blocked action")
   })
 
+  test("shows the interactive denial choices and approves only once when selected", async () => {
+    const app = continuationHarness(() => "idle")
+    const interactiveApp = {
+      ...app.app,
+      options: { ...app.app.options, interactiveDenials: true },
+      ui: {
+        ...app.app.ui,
+        router: { current: () => ({ type: "session", sessionID: "ses_root" }) },
+      },
+    } as unknown as Context
+    let dialogTitle = ""
+    let dialogSize = ""
+    let optionTitles: string[] = []
+    ;(interactiveApp.ui as unknown as {
+      dialog: {
+        select(input: { title: string; options: Array<{ title: string }> }): Promise<string>
+        set(input: { size?: string }): void
+      }
+    }).dialog = {
+      async select(input) {
+        dialogTitle = input.title
+        optionTitles = input.options.map((option) => option.title)
+        return "approve"
+      },
+      set(input) {
+        dialogSize = input.size ?? ""
+      },
+    }
+
+    await emitDenial(interactiveApp, app.handlers, app.pending)
+
+    expect(dialogTitle).toBe("Command blocked")
+    expect(dialogSize).toBe("xlarge")
+    expect(optionTitles).not.toContain("Use safer approach")
+    expect(app.replies).toHaveLength(1)
+    expect(app.replies[0]).toMatchObject({ sessionID: "ses_root", requestID: "per_1", reply: "once" })
+    expect(app.prompts).toEqual([])
+  })
+
+  test("offers the classifier's safer alternative and relays that exact option", async () => {
+    const app = continuationHarness(() => "idle")
+    app.pending[0]!.resources = ["touch .approval-marker"]
+    const client = app.app.client as any
+    client.permission.request = { list: async () => ({ data: [] }) }
+    client.permission.reply = async (input: Record<string, unknown>) => {
+      app.replies.push({ ...input, reply: input.decision })
+      app.pending.length = 0
+    }
+    client.session.create = async () => ({ id: "ses_review" })
+    client.session.generate = async () => ({
+      text: JSON.stringify({
+        decision: "deny",
+        reasonCode: "user_prohibition",
+        reason: "The requested command was explicitly prohibited.",
+        alternatives: ["Explain how to remove the marker manually without running the command."],
+      }),
+    })
+    client.session.remove = async () => {}
+
+    const interactiveApp = {
+      ...app.app,
+      options: { ...app.app.options, interactiveDenials: true },
+      ui: {
+        ...app.app.ui,
+        router: { current: () => ({ type: "session", sessionID: "ses_root" }) },
+      },
+    } as unknown as Context
+    let options: Array<{ title: string; value: string; description?: string }> = []
+    let selectedValue = ""
+    ;(interactiveApp.ui as unknown as {
+      dialog: {
+        select(input: { options: Array<{ title: string; value: string; description?: string }> }): Promise<string>
+        set(input: { size?: string }): void
+      }
+    }).dialog = {
+      async select(input) {
+        options = input.options
+        selectedValue = "alternative:0"
+        return selectedValue
+      },
+      set() {},
+    }
+
+    await emitDenial(interactiveApp, app.handlers, app.pending)
+
+    const saferOption = options.find((option) => option.value === selectedValue)
+    expect(saferOption).toMatchObject({
+      title: "Use safer approach",
+      description: "Explain how to remove the marker manually without running the command.",
+    })
+    expect(String(app.prompts[0]?.text)).toContain(
+      "User-selected direction: Follow this reviewer-proposed safer alternative: Explain how to remove the marker manually without running the command.",
+    )
+    expect(String(app.prompts[0]?.text)).toContain("The requested command was explicitly prohibited.")
+  })
+
+  test("presents custom input as the user's chosen next step, distinct from the denial", async () => {
+    const app = continuationHarness(() => "idle")
+    app.pending[0]!.resources = ["touch .approval-marker"]
+    const client = app.app.client as any
+    client.permission.request = { list: async () => ({ data: [] }) }
+    client.permission.reply = async (input: Record<string, unknown>) => {
+      app.replies.push({ ...input, reply: input.decision })
+      app.pending.length = 0
+    }
+    client.session.create = async () => ({ id: "ses_review" })
+    client.session.generate = async () => ({
+      text: JSON.stringify({
+        decision: "deny",
+        reasonCode: "user_prohibition",
+        reason: "The user explicitly prohibited this action.",
+        alternatives: [],
+      }),
+    })
+    client.session.remove = async () => {}
+
+    const interactiveApp = {
+      ...app.app,
+      options: { ...app.app.options, interactiveDenials: true },
+      ui: {
+        ...app.app.ui,
+        router: { current: () => ({ type: "session", sessionID: "ses_root" }) },
+      },
+    } as unknown as Context
+    const customDirection = "Create the marker with a Python script instead."
+    ;(interactiveApp.ui as unknown as { dialog: Record<string, unknown> }).dialog = {
+      async select() { return "custom" },
+      async prompt() { return customDirection },
+      set() {},
+    }
+
+    await emitDenial(interactiveApp, app.handlers, app.pending)
+
+    expect(app.replies[0]).toMatchObject({ requestID: "per_1", reply: "reject" })
+    expect(app.prompts).toHaveLength(1)
+    const continuation = String(app.prompts[0]?.text)
+    expect(continuation).toContain(`User-selected direction: ${customDirection}`)
+    expect(continuation).toContain("This denial applies to that call only")
+    expect(continuation).toContain("Do not retry the exact blocked call")
+  })
+
+  test("does not open a denial dialog in a different active session", async () => {
+    const app = continuationHarness(() => "idle")
+    const otherSessionApp = {
+      ...app.app,
+      options: { ...app.app.options, interactiveDenials: true },
+      ui: {
+        ...app.app.ui,
+        router: { current: () => ({ type: "session", sessionID: "ses_other" }) },
+      },
+    } as unknown as Context
+    let dialogCalls = 0
+    ;(otherSessionApp.ui as unknown as { dialog: { select(): Promise<string> } }).dialog = {
+      async select() {
+        dialogCalls++
+        return "stop"
+      },
+    }
+
+    await emitDenial(otherSessionApp, app.handlers, app.pending)
+
+    expect(dialogCalls).toBe(0)
+    expect(app.replies).toEqual([])
+  })
+
   test("resumes an idle session with the denial reason", async () => {
     const app = continuationHarness(() => "idle")
 

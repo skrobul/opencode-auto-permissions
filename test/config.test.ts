@@ -11,6 +11,7 @@ describe("parseConfig", () => {
       userMessageCount: 8,
       shadow: false,
       sessionApprovals: true,
+      interactiveDenials: false,
       runtime: "auto",
       diagnosticsPath: undefined,
     })
@@ -55,6 +56,11 @@ describe("parseConfig", () => {
   test("allows session approvals to be disabled", () => {
     expect(parseConfig({ model: "a/b" }).sessionApprovals).toBeTrue()
     expect(parseConfig({ model: "a/b", sessionApprovals: false }).sessionApprovals).toBeFalse()
+  })
+
+  test("enables interactive denial handling only when explicitly requested", () => {
+    expect(parseConfig({}).interactiveDenials).toBeFalse()
+    expect(parseConfig({ interactiveDenials: true }).interactiveDenials).toBeTrue()
   })
 
   test("enables bounded diagnostics with a default or explicit path", () => {
