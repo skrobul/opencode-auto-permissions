@@ -11,6 +11,10 @@ Automatic, context-aware permission review for OpenCode. Let routine work run no
 
 The plugin supports stable and V2 OpenCode permission protocols automatically. It never grants permanent `always` permission.
 
+## Attribution
+
+This fork is based on [OpenCode Auto Permissions](https://github.com/hueyexe/opencode-auto-permissions), originally created by Chris Clapham ([@hueyexe](https://github.com/hueyexe)). The original MIT license and copyright notice are retained in [LICENSE](./LICENSE). This fork is maintained by [@skrobul](https://github.com/skrobul) and includes independent modifications.
+
 ## Install
 
 Install the published npm package globally with OpenCode's built-in plugin installer:
